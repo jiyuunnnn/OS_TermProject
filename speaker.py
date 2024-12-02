@@ -4,32 +4,36 @@ from gtts import gTTS
 from playsound import playsound
 import openai
 
-def listen(recognizer, audio):
-    try:
-        text = recognizer.recognize_google(audio, language='en')
-        print(f"[user] {text}")
-        answer(text)
-    except sr.UnknownValueError:
-        print("Failure to recognize")
-    except sr.RequestError as e:
-        print('요청실패 : {0}'.format(e))
+openai.api_key = "sk-1234567890abcdef"
 
 def answer(input_text):
-    answer_text = ''
-    if 'hi' in input_text:
-        answer_text = 'hello'
-    elif "How is the weather today" in input_text:
-        answer_text = 'sunny day'
-    elif "How's the exchange rate" in input_text:
-        answer_text = "It went up"
-    elif "thanks" in input_text:
-        answer_text = "No problem"
-    elif "exit" in input_text:
-        answer_text = "okay ending the program..."
-        stop_listening(wait_for_stop=False)
-    else:
-        answer_text = "Say it once again, please"
-    speak(answer_text)
+    # 로컬에서 간단히 처리 가능한 명령어
+    if input_text.lower() in ["stop", "exit"]:
+        response_text = "Stopping the assistant."
+        print(f"[AI]: {response_text}")
+        speak(response_text)
+        exit()
+    elif input_text.lower() == "hello":
+        response_text = "Hello! How can I assist you today?"
+        print(f"[AI]: {response_text}")
+        speak(response_text)
+        return
+
+    # OpenAI API 호출
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": input_text}
+            ]
+        )
+        response_text = response['choices'][0]['message']['content']
+        print(f"[AI]: {response_text}")
+        speak(response_text)
+    except openai.error.RateLimitError:
+        print("API 사용 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.")
+        speak("I'm sorry, there was an issue with generating a response due to quota limits.")
 
 def speak(text):
     print(f"[AI]: {text}")
@@ -41,12 +45,17 @@ def speak(text):
         os.remove(file_name)
 
 r = sr.Recognizer()
-m = sr.Microphone()
-
-speak('Can I help you with anything?')
-
-stop_listening = r.listen_in_background(m, listen)
-#stop_listening(wait_for_stop=False)
 
 while True:
-    time.sleep(0.1)
+    with sr.Microphone() as source:
+        print("Listening...")
+        r.adjust_for_ambient_noise(source, duration=1)
+        audio = r.listen(source)
+        try:
+            text = r.recognize_google(audio, language='en')
+            print(f'[User]: {text}')
+            answer(text)
+        except sr.UnknownValueError:
+            print("Failed to recognize")
+        except sr.RequestError as e:
+            print(f"Request failed: {e}")
